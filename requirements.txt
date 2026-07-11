@@ -1,0 +1,4 @@
+Flask==2.3.3
+requests==2.31.0
+rsa==4.9
+pyquery==2.0.0

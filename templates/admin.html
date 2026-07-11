@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>管理员中心 - 成绩监测系统</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 1200px; margin: 0 auto; padding: 20px; }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; }
+        table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+        th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
+        th { background: #f8f9fa; }
+        a { color: #dc3545; text-decoration: none; }
+        .btn {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 5px;
+            font-size: 14px;
+        }
+        .btn-start { background: #28a745; color: white; }
+        .btn-start:hover { background: #218838; }
+        .btn-stop { background: #dc3545; color: white; }
+        .btn-stop:hover { background: #c82333; }
+        .btn:disabled { background: #ccc; cursor: not-allowed; }
+        .status { font-weight: bold; }
+        .status-active { color: #28a745; }
+        .status-inactive { color: #6c757d; }
+        .message { margin: 10px 0; padding: 10px; border-radius: 4px; }
+        .message.success { background: #d4edda; color: #155724; }
+        .message.error { background: #f8d7da; color: #721c24; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>管理员中心</h1>
+        <a href="{{ url_for('admin_logout') }}">退出登录</a>
+    </div>
+
+    <div id="message" class="message" style="display: none;"></div>
+
+    <h2>所有用户及监测状态</h2>
+    {% if users %}
+        <table>
+            <thead>
+                <tr>
+                    <th>用户ID</th>
+                    <th>用户名</th>
+                    <th>邮箱</th>
+                    <th>教务账号</th>
+                    <th>监测状态</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for user_id, user_data in users.items() %}
+                    {% set jw_accounts = user_data.get('jw_accounts', {}) %}
+                    {% if jw_accounts %}
+                        {% for jw_username, account_info in jw_accounts.items() %}
+                            {% set monitor_id = jw_username + '_' + account_info.get('email', '') %}
+                            {% set is_monitoring = false %}
+                            {% for task in tasks %}
+                                {% if task.monitor_id == monitor_id %}
+                                    {% set is_monitoring = true %}
+                                {% endif %}
+                            {% endfor %}
+                            <tr>
+                                <td>{{ user_data.get('id', '') }}</td>
+                                <td>{{ user_id }}</td>
+                                <td>{{ user_data.get('email', '') }}</td>
+                                <td>{{ jw_username }}</td>
+                                <td>
+                                    {% if is_monitoring %}
+                                        <span class="status status-active">监测中</span>
+                                    {% else %}
+                                        <span class="status status-inactive">未监测</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if is_monitoring %}
+                                        <button class="btn btn-stop" onclick="stopMonitor('{{ user_data.get('id', '') }}', '{{ monitor_id }}')">停止监测</button>
+                                    {% else %}
+                                        <button class="btn btn-start" onclick="startMonitor('{{ user_data.get('id', '') }}', '{{ monitor_id }}')">开启监测</button>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    {% endif %}
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p>暂无用户数据</p>
+    {% endif %}
+
+    <h2>活跃监测任务</h2>
+    {% if tasks %}
+        <table>
+            <thead>
+                <tr>
+                    <th>用户ID</th>
+                    <th>监测ID</th>
+                    <th>教务账号</th>
+                    <th>通知邮箱</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for task in tasks %}
+                    <tr>
+                        <td>{{ task.user_id }}</td>
+                        <td>{{ task.monitor_id }}</td>
+                        <td>{{ task.username }}</td>
+                        <td>{{ task.email }}</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p>暂无活跃的监测任务</p>
+    {% endif %}
+
+    <script>
+        function showMessage(message, isSuccess) {
+            const messageEl = document.getElementById('message');
+            messageEl.textContent = message;
+            messageEl.className = 'message ' + (isSuccess ? 'success' : 'error');
+            messageEl.style.display = 'block';
+            
+            setTimeout(() => {
+                messageEl.style.display = 'none';
+            }, 3000);
+        }
+
+        async function startMonitor(userId, monitorId) {
+            if (!confirm('确定要开启该用户的监测吗？')) {
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('user_id', userId);
+            formData.append('monitor_id', monitorId);
+
+            try {
+                const res = await fetch('/grade/api/admin/start_monitor', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                if (!res.ok) {
+                    throw new Error(`HTTP错误: ${res.status}`);
+                }
+                
+                const data = await res.json();
+                
+                if (data.success) {
+                    showMessage(data.message, true);
+                    setTimeout(() => location.reload(), 1000);
+                } else {
+                    showMessage(data.message, false);
+                }
+            } catch (err) {
+                showMessage('请求失败：' + err.message, false);
+            }
+        }
+
+        async function stopMonitor(userId, monitorId) {
+            if (!confirm('确定要停止该用户的监测吗？')) {
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('user_id', userId);
+            formData.append('monitor_id', monitorId);
+
+            try {
+                const res = await fetch('/grade/api/admin/stop_monitor', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                if (!res.ok) {
+                    throw new Error(`HTTP错误: ${res.status}`);
+                }
+                
+                const data = await res.json();
+                
+                if (data.success) {
+                    showMessage(data.message, true);
+                    setTimeout(() => location.reload(), 1000);
+                } else {
+                    showMessage(data.message, false);
+                }
+            } catch (err) {
+                showMessage('请求失败：' + err.message, false);
+            }
+        }
+    </script>
+</body>
+</html>
